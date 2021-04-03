@@ -1,10 +1,13 @@
 package main
 
 import (
+	"flag"
+
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -18,9 +21,15 @@ const (
 )
 
 func main() {
-	// logrus.SetLevel(logrus.DebugLevel)
 	config := NewConfig()
 	a := app.New()
+
+	config.DebugMode = flag.Bool("d", false, "fake downloading; print debug info")
+	flag.Parse()
+	if *config.DebugMode {
+		logrus.SetLevel(logrus.DebugLevel)
+		logrus.Debug("RUNNING IN DEBUG MODE")
+	}
 
 	progressBar := widget.NewProgressBar()
 	config.Progress = &progress{0, "", progressBar}

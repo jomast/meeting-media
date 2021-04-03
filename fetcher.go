@@ -83,18 +83,28 @@ func (c *Config) getMMData() (mmd MeetingData, err error) {
 	}
 
 	if c.FetchOtherMedia {
-		pics := []file{}
 		imageNames := getImageNames(sqlDB, docGroups)
+
 		for _, name := range imageNames {
 			pic, err := unzipFile(contents, name)
 			if err != nil {
 				return MeetingData{}, errors.New("problem getting pic")
 			}
 
-			pics = append(pics, file{Name: name, Payload: pic})
+			mmd.Pictures = append(mmd.Pictures, file{Name: name, Payload: pic})
 		}
-		mmd.Pictures = pics
+
 		mmd.Videos = getMWBVideos(sqlDB, docGroups)
+
+		linkedDocs := c.getLinkedDocs(sqlDB, docGroups)
+		for _, ld := range linkedDocs {
+			docMedia, err := c.getDocMedia(ld)
+			if err != nil {
+				logrus.Warn(err)
+			}
+			mmd.Pictures = append(mmd.Pictures, docMedia.Pictures...)
+			mmd.Videos = append(mmd.Videos, docMedia.Videos...)
+		}
 	}
 
 	return
@@ -182,13 +192,76 @@ func (c *Config) getWMData() (wmd MeetingData, err error) {
 	return
 }
 
+func (c *Config) getDocMedia(ld LinkedDocument) (md MeetingData, err error) {
+	jwpubBytes, err := c.getJWPub(ld.PublicationSymbol)
+	if err != nil {
+		return
+	}
+
+	tempDir, err := ioutil.TempDir("", "jwpub_fetcher_")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	contents, err := unzipFile(jwpubBytes, "contents")
+	if err != nil {
+		return
+	}
+
+	dbBytes, err := unzipFile(contents, ld.PublicationSymbol+"*.db")
+	if err != nil {
+		return
+	}
+
+	// write this file to disk; quick check doesn't show an easy way for sqlite to handle things in memory only
+	dbFilename := filepath.Join(tempDir, tempDBFile)
+	dbFile, err := os.Create(dbFilename)
+	if err != nil {
+		return
+	}
+	_, err = dbFile.Write(dbBytes)
+	if err != nil {
+		return
+	}
+	dbFile.Close()
+
+	sqlDB, err := sql.Open(dbDriver, dbFilename)
+	if err != nil {
+		return
+	}
+	defer sqlDB.Close()
+
+	mepsDocs, err := getMEPSDocuments(sqlDB, ld.MepsDocumentID)
+	if err != nil {
+		return
+	}
+	logrus.Debug("docs >>", mepsDocs)
+
+	for _, d := range mepsDocs {
+		switch d.MimeType {
+		case "image/jpeg":
+			pic, err := unzipFile(contents, d.Name)
+			if err != nil {
+				return MeetingData{}, errors.New("problem getting pic")
+			}
+			md.Pictures = append(md.Pictures, file{Name: d.Name, Payload: pic})
+		case "video/mp4":
+			md.Videos = append(md.Videos, d.video)
+		}
+	}
+
+	logrus.Debug("getDocMedia()", md)
+	return
+}
+
 func (c *Config) getJWPub(pub string) ([]byte, error) {
 	date := c.Date
-	if pub == "w" {
+	switch pub {
+	case "w":
 		// W is published 2 months prior to it beeing needed for the meeting
 		date = c.Date.AddDate(0, -2, 0)
-	}
-	if pub == "mwb" {
+	case "mwb":
 		// mwb is released two months at a time.
 		if c.Date.Month()%2 == 0 {
 			date = c.Date.AddDate(0, -1, 0)
@@ -204,7 +277,13 @@ func (c *Config) getJWPub(pub string) ([]byte, error) {
 }
 
 func (c *Config) getJWPubInfo(year, month int, pub string) (*mediaInfo, error) {
-	str := fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?issue=%d%02d&output=json&pub=%s&fileformat=JWPUB&alllangs=0&langwritten=%s&txtCMSLang=%s", year, month, pub, c.Language, c.Language)
+	var str string
+	switch pub {
+	case "w", "mwb":
+		str = fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?issue=%d%02d&output=json&pub=%s&fileformat=JWPUB&alllangs=0&langwritten=%s&txtCMSLang=%s", year, month, pub, c.Language, c.Language)
+	default:
+		str = fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?output=json&pub=%s&fileformat=JWPUB&alllangs=0&langwritten=%s&txtCMSLang=%s", pub, c.Language, c.Language)
+	}
 	logrus.Debug("getJWPubInfo()", str)
 
 	resp, err := c.HttpClient.Get(str)
