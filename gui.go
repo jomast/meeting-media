@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -135,9 +136,25 @@ func (c *Config) settingsGUI() *fyne.Container {
 	lang.SetPlaceHolder("MEPS Language Symbol (eg. E)")
 	lang.SetText(c.Language)
 
+	pubs := widget.NewEntry()
+	pubs.SetPlaceHolder("Linked publication symbols to allow (eg. th, rr)")
+	var pubSymbolString string
+	for i, s := range c.PubSymbols {
+		if i != 0 {
+			pubSymbolString += ", "
+		}
+		pubSymbolString += s
+	}
+	pubs.SetText(pubSymbolString)
+
 	save := widget.NewButton("Save", func() {
 		c.SaveLocation = targetDir.Text
 		c.Language = lang.Text
+		var pubSymbolSlice []string
+		for _, p := range strings.Split(pubs.Text, ",") {
+			pubSymbolSlice = append(pubSymbolSlice, strings.TrimSpace(strings.ToLower(p)))
+		}
+		c.PubSymbols = pubSymbolSlice
 		c.writeConfigToFile()
 	})
 
@@ -146,6 +163,7 @@ func (c *Config) settingsGUI() *fyne.Container {
 		targetDir,
 		purgeDir,
 		lang,
+		pubs,
 		save,
 	)
 

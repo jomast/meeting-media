@@ -150,7 +150,7 @@ func (c *Config) downloadVideo(v *video) (name string, err error) {
 
 	var path, url string
 	var filesize int
-	if v.MepsDocumentID.Valid {
+	if v.IssueTagNumber == 0 {
 		vidInfo, err := c.getMediaVideoInfo(v)
 		if err != nil {
 			return "", err
@@ -158,11 +158,20 @@ func (c *Config) downloadVideo(v *video) (name string, err error) {
 		path = fmt.Sprintf("%s/%s", c.SaveLocation, filepath.Base(vidInfo.Files[c.Language].MP4[res].File.URL))
 		url = vidInfo.Files[c.Language].MP4[res].File.URL
 		filesize = vidInfo.Files[c.Language].MP4[res].Filesize
-	} else {
+
+	} else if v.IssueTagNumber != 0 {
 		vidInfo, err := c.getPubVideoInfo(v)
 		if err != nil {
 			return "", err
 		}
+
+		for i, v := range vidInfo.Media[0].Files {
+			if v.Label == c.Resolution && !v.Subtitled {
+				res = i
+				break
+			}
+		}
+
 		path = fmt.Sprintf("%s/%s", c.SaveLocation, filepath.Base(vidInfo.Media[0].Files[res].Progressivedownloadurl))
 		url = vidInfo.Media[0].Files[res].Progressivedownloadurl
 		filesize = vidInfo.Media[0].Files[res].Filesize
@@ -182,56 +191,67 @@ func (c *Config) downloadVideo(v *video) (name string, err error) {
 
 func (c *Config) downloadSongMedia(songInfo *mediaInfo, vidKey int, file string) error {
 	url := songInfo.Files[c.Language].MP4[vidKey].File.URL
-	logrus.Debug("downloading media " + url)
-	resp, err := c.HttpClient.Get(url)
-	if err != nil {
-		return errors.New("failed to download " + url)
+	if *c.DebugMode {
+		logrus.Debug("Mock downloadSongMedia:", url)
+	} else {
+		logrus.Debug("downloading media " + url)
+
+		if *c.DebugMode {
+			logrus.Debug("Mock Download SongMedia:", url)
+		} else {
+			resp, err := c.HttpClient.Get(url)
+			if err != nil {
+				return errors.New("failed to download " + url)
+			}
+
+			c.Progress.ProgressBar.SetValue(0)
+			c.Progress.Total = 0
+			c.Progress.Title = filepath.Base(url)
+			c.Progress.ProgressBar.Max = float64(songInfo.Files[c.Language].MP4[vidKey].Filesize)
+
+			data := io.TeeReader(resp.Body, c.Progress)
+
+			body, err := ioutil.ReadAll(data)
+			if err != nil {
+				return errors.New("error reading data from " + url)
+			}
+
+			logrus.Debug("writing to  " + file)
+			if ioutil.WriteFile(file, body, 0644) != nil {
+				return errors.New("error writing data to " + file)
+			}
+		}
 	}
-
-	c.Progress.ProgressBar.SetValue(0)
-	c.Progress.Total = 0
-	c.Progress.Title = filepath.Base(url)
-	c.Progress.ProgressBar.Max = float64(songInfo.Files[c.Language].MP4[vidKey].Filesize)
-
-	data := io.TeeReader(resp.Body, c.Progress)
-
-	body, err := ioutil.ReadAll(data)
-	if err != nil {
-		return errors.New("error reading data from " + url)
-	}
-
-	logrus.Debug("writing to  " + file)
-	if ioutil.WriteFile(file, body, 0644) != nil {
-		return errors.New("error writing data to " + file)
-	}
-
 	return nil
 }
 
 func (c *Config) downloadVideoMedia(url string, filesize int, file string) error {
-	logrus.Debug("downloading media " + url)
-	resp, err := c.HttpClient.Get(url)
-	if err != nil {
-		return errors.New("failed to download " + url)
+	if *c.DebugMode {
+		logrus.Debug("Mock downloadVideoMedia:", url)
+	} else {
+		logrus.Debug("downloading media " + url)
+		resp, err := c.HttpClient.Get(url)
+		if err != nil {
+			return errors.New("failed to download " + url)
+		}
+
+		c.Progress.ProgressBar.SetValue(0)
+		c.Progress.Total = 0
+		c.Progress.Title = filepath.Base(url)
+		c.Progress.ProgressBar.Max = float64(filesize)
+
+		data := io.TeeReader(resp.Body, c.Progress)
+
+		body, err := ioutil.ReadAll(data)
+		if err != nil {
+			return errors.New("error reading data from " + url)
+		}
+
+		logrus.Debug("writing to  " + file)
+		if ioutil.WriteFile(file, body, 0644) != nil {
+			return errors.New("error writing data to " + file)
+		}
 	}
-
-	c.Progress.ProgressBar.SetValue(0)
-	c.Progress.Total = 0
-	c.Progress.Title = filepath.Base(url)
-	c.Progress.ProgressBar.Max = float64(filesize)
-
-	data := io.TeeReader(resp.Body, c.Progress)
-
-	body, err := ioutil.ReadAll(data)
-	if err != nil {
-		return errors.New("error reading data from " + url)
-	}
-
-	logrus.Debug("writing to  " + file)
-	if ioutil.WriteFile(file, body, 0644) != nil {
-		return errors.New("error writing data to " + file)
-	}
-
 	return nil
 }
 
@@ -256,9 +276,15 @@ func (c *Config) getSongInfo(num string) (*mediaInfo, error) {
 
 func (c *Config) getMediaVideoInfo(v *video) (*mediaInfo, error) {
 	logrus.Debugf("fetching info for video: %#v ", v)
-	url := fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?docid=%v&output=json&fileformat=mp4&alllangs=0&track=%v&langwritten=%s&txtCMSLang=%s", v.MepsDocumentID.Int64, v.Track.Int64, c.Language, c.Language)
+	variable := ""
+	if v.MepsDocumentID.Valid {
+		variable = fmt.Sprintf("&docid=%v", v.MepsDocumentID.Int64)
+	} else {
+		variable = fmt.Sprintf("&pub=%s", v.KeySymbol.String)
+	}
+	url := fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?%s&output=json&fileformat=mp4&alllangs=0&track=%v&langwritten=%s&txtCMSLang=%s", variable, v.Track.Int64, c.Language, c.Language)
 
-	logrus.Debug("getVideoInfo() url:", url)
+	logrus.Debug("getMediaVideoInfo() url:", url)
 	resp, err := c.HttpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get media info for video: %#v", v)
@@ -272,7 +298,7 @@ func (c *Config) getMediaVideoInfo(v *video) (*mediaInfo, error) {
 	info := new(mediaInfo)
 	err = json.Unmarshal(body, info)
 
-	logrus.Debug("getVideoInfo() info:", info)
+	logrus.Debug("getMediaVideoInfo() info:", info)
 	return info, err
 }
 

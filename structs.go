@@ -19,9 +19,11 @@ type Config struct {
 	Songs                []string
 	Pictures             []file
 	Videos               []video
+	PubSymbols           []string
 	Progress             *progress
 	HttpClient           *retryablehttp.Client
 	Date                 time.Time
+	DebugMode            *bool
 }
 
 type video struct {
@@ -30,6 +32,11 @@ type video struct {
 	MepsDocumentID sql.NullInt64
 	Track          sql.NullInt64
 	KeySymbol      sql.NullString
+}
+
+type mepsDocument struct {
+	video
+	MimeType string
 }
 
 type mediaInfo struct {
@@ -91,9 +98,16 @@ type Media struct {
 type Files struct {
 	Progressivedownloadurl string `json:"progressiveDownloadURL"`
 	Filesize               int    `json:"filesize"`
+	Label                  string `json:"label"`
+	Subtitled              bool   `json:"subtitled"`
 }
 
 type Multimedia struct {
 	Track    string
 	FilePath string
+}
+
+type LinkedDocument struct {
+	PublicationSymbol string
+	MepsDocumentID    string
 }

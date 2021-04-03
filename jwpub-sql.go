@@ -11,6 +11,50 @@ import (
 
 const jwpubDateFormat = "20060102"
 
+func getMEPSDocuments(db *sql.DB, mdocid string) (mepsDocuments []mepsDocument, err error) {
+	// get all docIDs
+	sqlQuery := fmt.Sprintf(`SELECT Multimedia.MimeType,
+																	Multimedia.FilePath,
+																	Multimedia.Track,
+																	Multimedia.KeySymbol,
+																	Multimedia.MepsDocumentId,
+																	Multimedia.IssueTagNumber
+													 FROM Document
+													 INNER JOIN DocumentMultimedia
+													 ON Document.DocumentId = DocumentMultimedia.DocumentId
+													 INNER JOIN Multimedia
+													 ON DocumentMultimedia.MultimediaId = Multimedia.MultimediaId
+													 WHERE Document.MepsDocumentId = %s`, mdocid)
+
+	rows, err := db.Query(sqlQuery)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get allDocs: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var mepsDoc mepsDocument
+		err = rows.Scan(
+			&mepsDoc.MimeType,
+			&mepsDoc.Name,
+			&mepsDoc.Track,
+			&mepsDoc.KeySymbol,
+			&mepsDoc.MepsDocumentID,
+			&mepsDoc.IssueTagNumber,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("unable to scan allDocs row: %v", err)
+		}
+		mepsDocuments = append(mepsDocuments, mepsDoc)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("row error after allDocs query: %v", err)
+	}
+
+	return
+}
+
 func getMWBDocuments(db *sql.DB) (mwbDocuments []Document, err error) {
 	// get all docIDs
 	allDocs := make([]Document, 0)
@@ -42,7 +86,7 @@ func getMWBDocuments(db *sql.DB) (mwbDocuments []Document, err error) {
 	// Get primary docIDs w/ dates
 	primaryDocs := make([]Document, 0)
 	sqlQuery = `SELECT DocumentId, CAST(FirstDateOffset AS TEXT)
-	             FROM DatedText`
+	            FROM DatedText`
 
 	rows, err = db.Query(sqlQuery)
 	if err != nil {
@@ -73,8 +117,8 @@ func getMWBDocuments(db *sql.DB) (mwbDocuments []Document, err error) {
 	}
 
 	// glue it all together
+	var docDate time.Time
 	for _, doc := range allDocs {
-		var docDate time.Time
 		for _, pdoc := range primaryDocs {
 			if pdoc.ID == doc.ID {
 				docDate = pdoc.Date
@@ -324,5 +368,58 @@ func getImageNames(db *sql.DB, docIDs []Document) (files []string) {
 	}
 
 	logrus.Debug("getImageNames()", files)
+	return
+}
+
+func (c *Config) getLinkedDocs(db *sql.DB, docIDs []Document) (docs []LinkedDocument) {
+	var whereDID string
+	for i, did := range docIDs {
+		if i != 0 {
+			whereDID += " OR "
+		}
+		whereDID += fmt.Sprintf("DocumentExtract.DocumentId=%v", did.ID)
+	}
+
+	var refSymbol string
+	for i, pubSymbol := range c.PubSymbols {
+		if i != 0 {
+			refSymbol += " OR "
+		}
+		refSymbol += fmt.Sprintf("RefPublication.UndatedSymbol == '%s'", pubSymbol)
+	}
+
+	sqlQuery := fmt.Sprintf(`SELECT RefPublication.UndatedSymbol, Extract.RefMepsDocumentId
+													 FROM DocumentExtract
+													 INNER JOIN Extract
+													 ON DocumentExtract.ExtractId = Extract.ExtractId
+													 INNER JOIN  RefPublication
+													 ON Extract.RefPublicationId = RefPublication.RefPublicationId
+													 WHERE (%s)
+													 AND (RefPublication.UndatedSymbol == "rr" OR RefPublication.UndatedSymbol == "th");`,
+		whereDID)
+
+	rows, err := db.Query(sqlQuery)
+	if err != nil {
+		log.Fatal("unable to get lined documents: ", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ld LinkedDocument
+		err = rows.Scan(
+			&ld.PublicationSymbol,
+			&ld.MepsDocumentID,
+		)
+		if err != nil {
+			log.Fatal("unable to scan lined document row: ", err)
+		}
+		docs = append(docs, ld)
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Fatal("row error after lined document query: ", err)
+	}
+
+	logrus.Debug("getLinkedDocs()", docs)
 	return
 }

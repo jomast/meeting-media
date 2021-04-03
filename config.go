@@ -43,6 +43,7 @@ func (c *Config) readConfigFromFile() {
 		c.SaveLocation = filepath.Join(homeDir, "Downloads/meetings")
 		c.Resolution = RES720
 		c.Language = "E"
+		c.PubSymbols = []string{"th", "rr"}
 		c.writeConfigToFile()
 	}
 
@@ -65,6 +66,7 @@ func (c *Config) writeConfigToFile() {
 		Resolution           string
 		SaveLocation         string
 		Language             string
+		PubSymbols           []string
 	}{
 		AutoFetchMeetingData: c.AutoFetchMeetingData,
 		FetchOtherMedia:      c.FetchOtherMedia,
@@ -73,6 +75,7 @@ func (c *Config) writeConfigToFile() {
 		Resolution:           c.Resolution,
 		SaveLocation:         c.SaveLocation,
 		Language:             c.Language,
+		PubSymbols:           c.PubSymbols,
 	}
 
 	configToml, err := toml.Marshal(config)
