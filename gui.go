@@ -77,7 +77,7 @@ func (c *Config) mGUI(m string) *fyne.Container {
 			logrus.Fatal(err)
 		}
 		c.Date = WeekOf(dateToSet)
-		c.Songs = []string{song1box.Text, song2box.Text, song3box.Text}
+		c.SongsToGet = []string{song1box.Text, song2box.Text, song3box.Text}
 
 		if err := c.fetchMeetingStuff(m); err == nil {
 			fyne.CurrentApp().SendNotification(&fyne.Notification{
@@ -94,7 +94,8 @@ func (c *Config) mGUI(m string) *fyne.Container {
 		// reset in case of subsequent runs
 		c.Pictures = []file{}
 		c.Videos = []video{}
-		c.Songs = []string{}
+		c.SongsToGet = []string{}
+		c.SongsNames = []string{}
 	})
 
 	mmBox := container.NewVBox(

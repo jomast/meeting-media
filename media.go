@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -29,14 +30,14 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		switch m {
 		case WM:
 			data, err = c.getWMData()
-			c.Songs = []string{
-				c.Songs[0],
+			c.SongsToGet = []string{
+				c.SongsToGet[0],
 				data.Songs[0],
 				data.Songs[1],
 			}
 		case MM:
 			data, err = c.getMMData()
-			c.Songs = data.Songs
+			c.SongsToGet = data.Songs
 			c.Videos = data.Videos
 		}
 		if err != nil {
@@ -46,7 +47,7 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		c.Pictures = data.Pictures
 	}
 
-	for _, song := range c.Songs {
+	for _, song := range c.SongsToGet {
 		if err := c.downloadSong(song); err != nil {
 			return err
 		}
@@ -64,7 +65,7 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		for _, picture := range c.Pictures {
 			logrus.Infof("saving picture %s", picture.Name)
 			file := filepath.Join(c.SaveLocation, picture.Name)
-			if ioutil.WriteFile(file, picture.Payload, 0644) != nil {
+			if os.WriteFile(file, picture.Payload, 0644) != nil {
 				return errors.New("error writing data to " + file)
 			}
 		}
@@ -85,9 +86,9 @@ func (c *Config) createPlaylist() error {
 	})
 
 	file := filepath.Join(c.SaveLocation, "/playlist.m3u")
-	body := ""
-	for _, s := range c.Songs {
-		body += s + ".mp4\n"
+	body := "#EXTM3U\n"
+	for _, s := range c.SongsNames {
+		body += s + "\n"
 	}
 	for _, v := range c.Videos {
 		body += v.Name + "\n"
@@ -96,7 +97,7 @@ func (c *Config) createPlaylist() error {
 		body += p.Name + "\n"
 	}
 
-	if err := ioutil.WriteFile(file, []byte(body), 0644); err != nil {
+	if err := os.WriteFile(file, []byte(body), 0644); err != nil {
 		return err
 	}
 
@@ -264,7 +265,7 @@ func (c *Config) downloadVideoMedia(url string, filesize int) (payload []byte, e
 			Name:    filepath.Base(url),
 			Payload: payload,
 		})
-		}
+	}
 	return payload, nil
 }
 

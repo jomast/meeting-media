@@ -17,7 +17,8 @@ type Config struct {
 	SaveLocation         string
 	CacheLocation        string
 	Language             string
-	Songs                []string
+	SongsToGet           []string
+	SongsNames           []string
 	Pictures             []file
 	Videos               []video
 	PubSymbols           []string
