@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -29,14 +30,14 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		switch m {
 		case WM:
 			data, err = c.getWMData()
-			c.Songs = []string{
-				c.Songs[0],
+			c.SongsToGet = []string{
+				c.SongsToGet[0],
 				data.Songs[0],
 				data.Songs[1],
 			}
 		case MM:
 			data, err = c.getMMData()
-			c.Songs = data.Songs
+			c.SongsToGet = data.Songs
 			c.Videos = data.Videos
 		}
 		if err != nil {
@@ -46,7 +47,7 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		c.Pictures = data.Pictures
 	}
 
-	for _, song := range c.Songs {
+	for _, song := range c.SongsToGet {
 		if err := c.downloadSong(song); err != nil {
 			return err
 		}
@@ -64,7 +65,7 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		for _, picture := range c.Pictures {
 			logrus.Infof("saving picture %s", picture.Name)
 			file := filepath.Join(c.SaveLocation, picture.Name)
-			if ioutil.WriteFile(file, picture.Payload, 0644) != nil {
+			if os.WriteFile(file, picture.Payload, 0644) != nil {
 				return errors.New("error writing data to " + file)
 			}
 		}
@@ -85,9 +86,9 @@ func (c *Config) createPlaylist() error {
 	})
 
 	file := filepath.Join(c.SaveLocation, "/playlist.m3u")
-	body := ""
-	for _, s := range c.Songs {
-		body += s + ".mp4\n"
+	body := "#EXTM3U\n"
+	for _, s := range c.SongsNames {
+		body += s + "\n"
 	}
 	for _, v := range c.Videos {
 		body += v.Name + "\n"
@@ -96,7 +97,7 @@ func (c *Config) createPlaylist() error {
 		body += p.Name + "\n"
 	}
 
-	if err := ioutil.WriteFile(file, []byte(body), 0644); err != nil {
+	if err := os.WriteFile(file, []byte(body), 0644); err != nil {
 		return err
 	}
 
@@ -119,21 +120,29 @@ func (c *Config) downloadSong(num string) (err error) {
 		res = 0
 	}
 
-	path := fmt.Sprintf("%s/%s.mp4", c.SaveLocation, num)
-
 	songInfo, err := c.getSongInfo(num)
 	if err != nil {
 		return
 	}
-	err = c.downloadSongMedia(songInfo, res, path)
+
+	filename := filepath.Base(songInfo.Files[c.Language].MP4[res].File.URL)
+	payload, err := c.getFromCache(filename, songInfo.Files[c.Language].MP4[res].File.Checksum)
 	if err != nil {
-		return
+		payload, err = c.downloadSongMedia(songInfo, res)
+		if err != nil {
+			return err
+		}
 	}
 
-	return nil
+	c.SongsNames = append(c.SongsNames, filename)
+
+	return c.saveAndLink(file{
+		Name:    filename,
+		Payload: payload,
+	})
 }
 
-func (c *Config) downloadVideo(v *video) (name string, err error) {
+func (c *Config) downloadVideo(v *video) (filename string, err error) {
 	var res int
 	switch c.Resolution {
 	case RES240:
@@ -148,18 +157,18 @@ func (c *Config) downloadVideo(v *video) (name string, err error) {
 		res = 0
 	}
 
-	var path, url string
+	var url, checksum string
 	var filesize int
 	if v.IssueTagNumber == 0 {
 		vidInfo, err := c.getMediaVideoInfo(v)
 		if err != nil {
 			return "", err
 		}
-		path = fmt.Sprintf("%s/%s", c.SaveLocation, filepath.Base(vidInfo.Files[c.Language].MP4[res].File.URL))
 		url = vidInfo.Files[c.Language].MP4[res].File.URL
 		filesize = vidInfo.Files[c.Language].MP4[res].Filesize
+		checksum = vidInfo.Files[c.Language].MP4[res].File.Checksum
 
-	} else if v.IssueTagNumber != 0 {
+	} else {
 		vidInfo, err := c.getPubVideoInfo(v)
 		if err != nil {
 			return "", err
@@ -172,25 +181,31 @@ func (c *Config) downloadVideo(v *video) (name string, err error) {
 			}
 		}
 
-		path = fmt.Sprintf("%s/%s", c.SaveLocation, filepath.Base(vidInfo.Media[0].Files[res].Progressivedownloadurl))
 		url = vidInfo.Media[0].Files[res].Progressivedownloadurl
 		filesize = vidInfo.Media[0].Files[res].Filesize
+		checksum = vidInfo.Media[0].Files[res].Checksum
 	}
 
-	name = filepath.Base(path)
+	filename = filepath.Base(url)
+	logrus.Infof("downloading video: %s", filename)
 
-	logrus.Infof("downloading video: %s", name)
-
-	err = c.downloadVideoMedia(url, filesize, path)
+	payload, err := c.getFromCache(filename, checksum)
 	if err != nil {
-		return
+		payload, err = c.downloadVideoMedia(url, filesize)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	return
+	return filename, c.saveAndLink(file{
+		Name:    filename,
+		Payload: payload,
+	})
 }
 
-func (c *Config) downloadSongMedia(songInfo *mediaInfo, vidKey int, file string) error {
+func (c *Config) downloadSongMedia(songInfo *mediaInfo, vidKey int) (payload []byte, err error) {
 	url := songInfo.Files[c.Language].MP4[vidKey].File.URL
+	filename := filepath.Base(url)
 	if *c.DebugMode {
 		logrus.Debug("Mock downloadSongMedia:", url)
 	} else {
@@ -201,7 +216,7 @@ func (c *Config) downloadSongMedia(songInfo *mediaInfo, vidKey int, file string)
 		} else {
 			resp, err := c.HttpClient.Get(url)
 			if err != nil {
-				return errors.New("failed to download " + url)
+				return nil, errors.New("failed to download " + url)
 			}
 
 			c.Progress.ProgressBar.SetValue(0)
@@ -211,28 +226,27 @@ func (c *Config) downloadSongMedia(songInfo *mediaInfo, vidKey int, file string)
 
 			data := io.TeeReader(resp.Body, c.Progress)
 
-			body, err := ioutil.ReadAll(data)
+			payload, err = ioutil.ReadAll(data)
 			if err != nil {
-				return errors.New("error reading data from " + url)
+				return nil, errors.New("error reading data from " + url)
 			}
 
-			logrus.Debug("writing to  " + file)
-			if ioutil.WriteFile(file, body, 0644) != nil {
-				return errors.New("error writing data to " + file)
+			if !validChecksum(songInfo.Files[c.Language].MP4[vidKey].File.Checksum, payload) {
+				return nil, errors.New("invalid checksum for " + filename)
 			}
 		}
 	}
-	return nil
+	return
 }
 
-func (c *Config) downloadVideoMedia(url string, filesize int, file string) error {
+func (c *Config) downloadVideoMedia(url string, filesize int) (payload []byte, err error) {
 	if *c.DebugMode {
 		logrus.Debug("Mock downloadVideoMedia:", url)
 	} else {
 		logrus.Debug("downloading media " + url)
 		resp, err := c.HttpClient.Get(url)
 		if err != nil {
-			return errors.New("failed to download " + url)
+			return nil, errors.New("failed to download " + url)
 		}
 
 		c.Progress.ProgressBar.SetValue(0)
@@ -242,17 +256,17 @@ func (c *Config) downloadVideoMedia(url string, filesize int, file string) error
 
 		data := io.TeeReader(resp.Body, c.Progress)
 
-		body, err := ioutil.ReadAll(data)
+		payload, err = ioutil.ReadAll(data)
 		if err != nil {
-			return errors.New("error reading data from " + url)
+			return nil, errors.New("error reading data from " + url)
 		}
 
-		logrus.Debug("writing to  " + file)
-		if ioutil.WriteFile(file, body, 0644) != nil {
-			return errors.New("error writing data to " + file)
-		}
+		c.saveToCache(file{
+			Name:    filepath.Base(url),
+			Payload: payload,
+		})
 	}
-	return nil
+	return payload, nil
 }
 
 func (c *Config) getSongInfo(num string) (*mediaInfo, error) {
@@ -302,6 +316,7 @@ func (c *Config) getMediaVideoInfo(v *video) (*mediaInfo, error) {
 	return info, err
 }
 
+// example: https://b.jw-cdn.org/apis/mediator/v1/media-items/E/pub-jwbcov_201605_4_VIDEO
 func (c *Config) getPubVideoInfo(v *video) (*PubVideo, error) {
 	logrus.Debugf("fetching info for video: %#v ", v)
 	url := fmt.Sprintf("https://b.jw-cdn.org/apis/mediator/v1/media-items/%s/pub-%s_%v_%v_VIDEO", c.Language, v.KeySymbol.String, v.IssueTagNumber/100, v.Track.Int64)

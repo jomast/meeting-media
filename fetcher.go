@@ -86,11 +86,20 @@ func (c *Config) getMMData() (mmd MeetingData, err error) {
 		imageNames := getImageNames(sqlDB, docGroups)
 
 		for _, name := range imageNames {
+			// skip images we already have
+			for _, p := range mmd.Pictures {
+				if p.Name == name {
+					continue
+				}
+			}
+
+			// fetch image from contents
 			pic, err := unzipFile(contents, name)
 			if err != nil {
 				return MeetingData{}, errors.New("problem getting pic")
 			}
 
+			// queue for storage
 			mmd.Pictures = append(mmd.Pictures, file{Name: name, Payload: pic})
 		}
 
@@ -241,6 +250,13 @@ func (c *Config) getDocMedia(ld LinkedDocument) (md MeetingData, err error) {
 	for _, d := range mepsDocs {
 		switch d.MimeType {
 		case "image/jpeg":
+
+			// skip known images that are not needed from 'th'
+			if d.Name == "1102018440_univ_cnt_1.jpg" ||
+				d.Name == "1102018440_univ_cnt_2.jpg" {
+				continue
+			}
+
 			pic, err := unzipFile(contents, d.Name)
 			if err != nil {
 				return MeetingData{}, errors.New("problem getting pic")
@@ -251,7 +267,7 @@ func (c *Config) getDocMedia(ld LinkedDocument) (md MeetingData, err error) {
 		}
 	}
 
-	logrus.Debug("getDocMedia()", md)
+	// logrus.Debug("getDocMedia()", md)
 	return
 }
 
@@ -273,7 +289,22 @@ func (c *Config) getJWPub(pub string) ([]byte, error) {
 		return nil, err
 	}
 
-	return c.download(m.Files[c.Language].JWPUB[0])
+	jwpubItem := m.Files[c.Language].JWPUB[0]
+	filename := filepath.Base(jwpubItem.File.URL)
+	payload, err := c.getFromCache(filename, jwpubItem.File.Checksum)
+	if err == nil {
+		return payload, err
+	}
+
+	payload, err = c.download(jwpubItem)
+	if err == nil {
+		c.saveToCache(file{
+			Name:    filename,
+			Payload: payload,
+		})
+	}
+
+	return payload, err
 }
 
 func (c *Config) getJWPubInfo(year, month int, pub string) (*mediaInfo, error) {
@@ -323,6 +354,10 @@ func (c *Config) download(jwpi JWPubItem) ([]byte, error) {
 	body, err = ioutil.ReadAll(data)
 	if err != nil {
 		return body, errors.New("error reading data from " + jwpi.File.URL)
+	}
+
+	if !validChecksum(jwpi.File.Checksum, body) {
+		return nil, errors.New("invalid checksum for downloaded file")
 	}
 
 	return body, nil

@@ -77,7 +77,7 @@ func (c *Config) mGUI(m string) *fyne.Container {
 			logrus.Fatal(err)
 		}
 		c.Date = WeekOf(dateToSet)
-		c.Songs = []string{song1box.Text, song2box.Text, song3box.Text}
+		c.SongsToGet = []string{song1box.Text, song2box.Text, song3box.Text}
 
 		if err := c.fetchMeetingStuff(m); err == nil {
 			fyne.CurrentApp().SendNotification(&fyne.Notification{
@@ -94,7 +94,8 @@ func (c *Config) mGUI(m string) *fyne.Container {
 		// reset in case of subsequent runs
 		c.Pictures = []file{}
 		c.Videos = []video{}
-		c.Songs = []string{}
+		c.SongsToGet = []string{}
+		c.SongsNames = []string{}
 	})
 
 	mmBox := container.NewVBox(
@@ -127,6 +128,10 @@ func (c *Config) settingsGUI() *fyne.Container {
 	targetDir.SetPlaceHolder("Download Path...")
 	targetDir.SetText(c.SaveLocation)
 
+	cacheDir := widget.NewEntry()
+	cacheDir.SetPlaceHolder("Cache Path...")
+	cacheDir.SetText(c.CacheLocation)
+
 	purgeDir := widget.NewCheck("Delete previous content before downloading new", func(d bool) {
 		c.PurgeSaveDir = d
 	})
@@ -149,6 +154,7 @@ func (c *Config) settingsGUI() *fyne.Container {
 
 	save := widget.NewButton("Save", func() {
 		c.SaveLocation = targetDir.Text
+		c.CacheLocation = cacheDir.Text
 		c.Language = lang.Text
 		var pubSymbolSlice []string
 		for _, p := range strings.Split(pubs.Text, ",") {
@@ -161,6 +167,7 @@ func (c *Config) settingsGUI() *fyne.Container {
 	settingsBox := container.NewVBox(
 		resPicker,
 		targetDir,
+		cacheDir,
 		purgeDir,
 		lang,
 		pubs,

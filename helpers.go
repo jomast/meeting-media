@@ -1,10 +1,15 @@
 package main
 
 import (
+	"crypto/md5"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 func WeekOf(date time.Time) time.Time {
@@ -48,4 +53,44 @@ func createDirIfNotExist(dir string) error {
 		}
 	}
 	return nil
+}
+
+func validChecksum(checksum string, payload []byte) bool {
+	if checksum != fmt.Sprintf("%x", md5.Sum(payload)) {
+		return false
+	}
+	return true
+}
+
+func (c *Config) getFromCache(filename, checksum string) ([]byte, error) {
+	payload, err := os.ReadFile(filepath.Join(c.CacheLocation, filename))
+	if err != nil {
+		return nil, err
+	}
+
+	if !validChecksum(checksum, payload) {
+		return nil, errors.New("invalid checksum on cached file")
+	}
+
+	logrus.Infof("using cache for %s", filename)
+	return payload, err
+}
+
+func (c *Config) saveToCache(f file) error {
+	createDirIfNotExist(c.CacheLocation)
+	err := os.WriteFile(filepath.Join(c.CacheLocation, f.Name), f.Payload, 0644)
+	if err != nil {
+		return err
+	}
+	logrus.Infof("caching %s", f.Name)
+	return nil
+}
+
+func (c *Config) saveAndLink(f file) error {
+	err := c.saveToCache(f)
+	if err != nil {
+		return err
+	}
+
+	return os.Symlink(filepath.Join(c.CacheLocation, f.Name), filepath.Join(c.SaveLocation, f.Name))
 }

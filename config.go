@@ -31,19 +31,25 @@ func newHttpClient() *retryablehttp.Client {
 	return client
 }
 
+func (c *Config) LoadDefaults() {
+	homeDir := os.Getenv("HOME")
+
+	c.AutoFetchMeetingData = true
+	c.FetchOtherMedia = true
+	c.CreatePlaylist = true
+	c.SaveLocation = filepath.Join(homeDir, "Downloads/meetings")
+	c.Resolution = RES720
+	c.Language = "E"
+	c.PubSymbols = []string{"th", "rr"}
+	c.CacheLocation = filepath.Join(homeDir, "Downloads/meetings_cache")
+}
+
 func (c *Config) readConfigFromFile() {
 	homeDir := os.Getenv("HOME")
+	c.LoadDefaults()
 
 	data, err := os.ReadFile(filepath.Join(homeDir, CONFIG_FILE))
 	if err != nil {
-		// defaults
-		c.AutoFetchMeetingData = true
-		c.FetchOtherMedia = true
-		c.CreatePlaylist = true
-		c.SaveLocation = filepath.Join(homeDir, "Downloads/meetings")
-		c.Resolution = RES720
-		c.Language = "E"
-		c.PubSymbols = []string{"th", "rr"}
 		c.writeConfigToFile()
 	}
 
@@ -66,6 +72,7 @@ func (c *Config) writeConfigToFile() {
 		Resolution           string
 		SaveLocation         string
 		Language             string
+		CacheLocation        string
 		PubSymbols           []string
 	}{
 		AutoFetchMeetingData: c.AutoFetchMeetingData,
@@ -76,6 +83,7 @@ func (c *Config) writeConfigToFile() {
 		SaveLocation:         c.SaveLocation,
 		Language:             c.Language,
 		PubSymbols:           c.PubSymbols,
+		CacheLocation:        c.CacheLocation,
 	}
 
 	configToml, err := toml.Marshal(config)

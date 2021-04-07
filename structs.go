@@ -15,8 +15,10 @@ type Config struct {
 	PurgeSaveDir         bool
 	Resolution           string
 	SaveLocation         string
+	CacheLocation        string
 	Language             string
-	Songs                []string
+	SongsToGet           []string
+	SongsNames           []string
 	Pictures             []file
 	Videos               []video
 	PubSymbols           []string
@@ -73,7 +75,8 @@ type MeetingData struct {
 
 type JWPubItem struct {
 	File struct {
-		URL string `json:"url"`
+		URL      string `json:"url"`
+		Checksum string `json:"checksum"`
 	} `json:"file"`
 	Filesize int `json:"filesize"`
 }
@@ -82,7 +85,8 @@ type MP4 struct {
 	Title string `json:"title"`
 	Track int    `json:"track"`
 	File  struct {
-		URL string `json:"url"`
+		URL      string `json:"url"`
+		Checksum string `json:"checksum"`
 	} `json:"file"`
 	Filesize int `json:"filesize"`
 }
@@ -97,6 +101,7 @@ type Media struct {
 
 type Files struct {
 	Progressivedownloadurl string `json:"progressiveDownloadURL"`
+	Checksum               string `json:"checksum"`
 	Filesize               int    `json:"filesize"`
 	Label                  string `json:"label"`
 	Subtitled              bool   `json:"subtitled"`
