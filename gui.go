@@ -127,6 +127,10 @@ func (c *Config) settingsGUI() *fyne.Container {
 	targetDir.SetPlaceHolder("Download Path...")
 	targetDir.SetText(c.SaveLocation)
 
+	cacheDir := widget.NewEntry()
+	cacheDir.SetPlaceHolder("Cache Path...")
+	cacheDir.SetText(c.CacheLocation)
+
 	purgeDir := widget.NewCheck("Delete previous content before downloading new", func(d bool) {
 		c.PurgeSaveDir = d
 	})
@@ -149,6 +153,7 @@ func (c *Config) settingsGUI() *fyne.Container {
 
 	save := widget.NewButton("Save", func() {
 		c.SaveLocation = targetDir.Text
+		c.CacheLocation = cacheDir.Text
 		c.Language = lang.Text
 		var pubSymbolSlice []string
 		for _, p := range strings.Split(pubs.Text, ",") {
@@ -161,6 +166,7 @@ func (c *Config) settingsGUI() *fyne.Container {
 	settingsBox := container.NewVBox(
 		resPicker,
 		targetDir,
+		cacheDir,
 		purgeDir,
 		lang,
 		pubs,

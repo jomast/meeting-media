@@ -273,7 +273,22 @@ func (c *Config) getJWPub(pub string) ([]byte, error) {
 		return nil, err
 	}
 
-	return c.download(m.Files[c.Language].JWPUB[0])
+	jwpubItem := m.Files[c.Language].JWPUB[0]
+	filename := filepath.Base(jwpubItem.File.URL)
+	payload, err := c.getFromCache(filename, jwpubItem.File.Checksum)
+	if err == nil {
+		return payload, err
+	}
+
+	payload, err = c.download(jwpubItem)
+	if err == nil {
+		c.saveToCache(file{
+			Name:    filename,
+			Payload: payload,
+		})
+	}
+
+	return payload, err
 }
 
 func (c *Config) getJWPubInfo(year, month int, pub string) (*mediaInfo, error) {
@@ -323,6 +338,10 @@ func (c *Config) download(jwpi JWPubItem) ([]byte, error) {
 	body, err = ioutil.ReadAll(data)
 	if err != nil {
 		return body, errors.New("error reading data from " + jwpi.File.URL)
+	}
+
+	if !validChecksum(jwpi.File.Checksum, body) {
+		return nil, errors.New("invalid checksum for downloaded file")
 	}
 
 	return body, nil
