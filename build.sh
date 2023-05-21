@@ -10,7 +10,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   lipo -create -output meeting-media meeting-media-arm64 meeting-media-amd64
 
   # create MacOS app
-  go get -u github.com/machinebox/appify
+  go install github.com/machinebox/appify
   appify -author "Jonathan Stanford" -icon icon.png -id "MeetingMedia" -name "MeetingMedia" -version "1.2" ./meeting-media
 
   rm meeting-media*

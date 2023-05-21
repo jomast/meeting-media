@@ -395,8 +395,8 @@ func (c *Config) getLinkedDocs(db *sql.DB, docIDs []Document) (docs []LinkedDocu
 													 INNER JOIN  RefPublication
 													 ON Extract.RefPublicationId = RefPublication.RefPublicationId
 													 WHERE (%s)
-													 AND (RefPublication.UndatedSymbol == "rr" OR RefPublication.UndatedSymbol == "th");`,
-		whereDID)
+													 AND (%s);`,
+		whereDID, refSymbol)
 
 	rows, err := db.Query(sqlQuery)
 	if err != nil {
