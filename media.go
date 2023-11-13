@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,7 +56,8 @@ func (c *Config) fetchMeetingStuff(m string) (err error) {
 		for i, video := range c.Videos {
 			name, err := c.downloadVideo(&video)
 			if err != nil {
-				return err
+				logrus.Warnf("error fetching video: %s => %s", name, err)
+				continue
 			}
 			c.Videos[i].Name = name
 		}
@@ -226,7 +226,7 @@ func (c *Config) downloadSongMedia(songInfo *mediaInfo, vidKey int) (payload []b
 
 			data := io.TeeReader(resp.Body, c.Progress)
 
-			payload, err = ioutil.ReadAll(data)
+			payload, err = io.ReadAll(data)
 			if err != nil {
 				return nil, errors.New("error reading data from " + url)
 			}
@@ -256,7 +256,7 @@ func (c *Config) downloadVideoMedia(url string, filesize int) (payload []byte, e
 
 		data := io.TeeReader(resp.Body, c.Progress)
 
-		payload, err = ioutil.ReadAll(data)
+		payload, err = io.ReadAll(data)
 		if err != nil {
 			return nil, errors.New("error reading data from " + url)
 		}
@@ -271,12 +271,12 @@ func (c *Config) downloadVideoMedia(url string, filesize int) (payload []byte, e
 
 func (c *Config) getSongInfo(num string) (*mediaInfo, error) {
 	logrus.Debug("fetching info for song number " + num)
-	resp, err := c.HttpClient.Get(fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?output=json&pub=sjjm&fileformat=mp4&alllangs=0&track=%s&langwritten=%s&txtCMSLang=%s", num, c.Language, c.Language))
+	resp, err := c.HttpClient.Get(fmt.Sprintf("https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&pub=sjjm&fileformat=mp4&alllangs=0&track=%s&langwritten=%s&txtCMSLang=%s", num, c.Language, c.Language))
 	if err != nil {
 		return nil, errors.New("failed to get media info for song #" + num)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.New("error reading info for song #" + num)
 	}
@@ -296,7 +296,7 @@ func (c *Config) getMediaVideoInfo(v *video) (*mediaInfo, error) {
 	} else {
 		variable = fmt.Sprintf("&pub=%s", v.KeySymbol.String)
 	}
-	url := fmt.Sprintf("https://pubmedia.jw-api.org/GETPUBMEDIALINKS?%s&output=json&fileformat=mp4&alllangs=0&track=%v&langwritten=%s&txtCMSLang=%s", variable, v.Track.Int64, c.Language, c.Language)
+	url := fmt.Sprintf("https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?%s&output=json&fileformat=mp4&alllangs=0&track=%v&langwritten=%s&txtCMSLang=%s", variable, v.Track.Int64, c.Language, c.Language)
 
 	logrus.Debug("getMediaVideoInfo() url:", url)
 	resp, err := c.HttpClient.Get(url)
@@ -304,7 +304,7 @@ func (c *Config) getMediaVideoInfo(v *video) (*mediaInfo, error) {
 		return nil, fmt.Errorf("failed to get media info for video: %#v", v)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading info for video: %#v", v)
 	}
@@ -327,7 +327,7 @@ func (c *Config) getPubVideoInfo(v *video) (*PubVideo, error) {
 		return nil, fmt.Errorf("failed to get media info for video: %#v", v)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading info for video: %#v", v)
 	}

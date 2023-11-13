@@ -40,7 +40,7 @@ func (c *Config) LoadDefaults() {
 	c.SaveLocation = filepath.Join(homeDir, "Downloads/meetings")
 	c.Resolution = RES720
 	c.Language = "E"
-	c.PubSymbols = []string{"th", "lff"}
+	c.PubSymbols = []string{"th", "bt"}
 	c.CacheLocation = filepath.Join(homeDir, "Downloads/meetings_cache")
 }
 
